@@ -1,14 +1,22 @@
 package ru.netology.netologyvoiceassistant
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.wolfram.alpha.WAEngine
 import com.wolfram.alpha.WAPlainText
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d("netology voice", "start of onCreate function")
         super.onCreate(savedInstanceState)
@@ -23,10 +31,56 @@ class MainActivity : AppCompatActivity() {
             askWolfram(questionInput.text.toString())
         }
 
+        val speakButton = findViewById<Button>(R.id.speak_button)
+        speakButton.setOnClickListener {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            intent.putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US)
+            intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "What do you want to know?")
+            try {
+                startActivityForResult(intent, 1)
+            } catch (a: ActivityNotFoundException) {
+                Toast.makeText(
+                    applicationContext,
+                    "Sorry your device not supported",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
+        val answerOutput = findViewById<TextView>(R.id.answer_output);
+
+        val tts = TextToSpeech(this, TextToSpeech.OnInitListener {  })
+        tts.language = Locale.US
+
+        var speechRequest = 0
+        findViewById<FloatingActionButton>(R.id.read_answer).setOnClickListener {
+            val answer = answerOutput.text.toString()
+            tts.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
+            speechRequest += 1
+        }
+
         Log.d("netology voice", "end of onCreate function")
     }
 
-    private fun askWolfram(question: String) {
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1) {
+            if (resultCode == RESULT_OK && data != null) {
+                val result: ArrayList<String>? = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                val question: String? = result?.get(0)
+
+                if (question != null) {
+                    findViewById<TextView>(R.id.question_input).text = question
+                }
+            }
+        }
+    }
+
+    fun askWolfram(question: String) {
         val wolframAppId = "DEMO"
 
         val engine = WAEngine()
