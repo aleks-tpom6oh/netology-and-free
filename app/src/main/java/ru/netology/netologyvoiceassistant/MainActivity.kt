@@ -17,6 +17,9 @@ import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
+    lateinit var tts: TextToSpeech
+    var speechRequest = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d("netology voice", "start of onCreate function")
         super.onCreate(savedInstanceState)
@@ -51,12 +54,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val answerOutput = findViewById<TextView>(R.id.answer_output);
+        val answerOutput = findViewById<TextView>(R.id.answer_output)
 
-        val tts = TextToSpeech(this, TextToSpeech.OnInitListener {  })
+        tts = TextToSpeech(this, TextToSpeech.OnInitListener {  })
         tts.language = Locale.US
 
-        var speechRequest = 0
         findViewById<FloatingActionButton>(R.id.read_answer).setOnClickListener {
             val answer = answerOutput.text.toString()
             tts.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
@@ -75,6 +77,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (question != null) {
                     findViewById<TextView>(R.id.question_input).text = question
+                    askWolfram(question)
                 }
             }
         }
@@ -111,6 +114,12 @@ class MainActivity : AppCompatActivity() {
                                     if (element is WAPlainText) {
                                         Log.d("wolfram", element.text)
                                         answerText.text = element.text
+
+                                        findViewById<FloatingActionButton>(R.id.read_answer).setOnClickListener {
+                                            val answer = findViewById<TextView>(R.id.answer_output).text.toString()
+                                            tts.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
+                                            speechRequest += 1
+                                        }
                                     }
                                 }
                             }
