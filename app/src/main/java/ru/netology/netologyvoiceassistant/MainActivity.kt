@@ -26,7 +26,7 @@ class MainActivity : AppCompatActivity() {
         Log.d("netology voice", "end of onCreate function")
     }
 
-    private fun askWolfram(question: String) {
+    fun askWolfram(question: String) {
         val wolframAppId = "DEMO"
 
         val engine = WAEngine()
