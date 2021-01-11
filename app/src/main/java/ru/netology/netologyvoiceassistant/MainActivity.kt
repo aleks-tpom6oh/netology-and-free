@@ -17,7 +17,7 @@ import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
-    lateinit var tts: TextToSpeech
+    lateinit var textToSpeech: TextToSpeech
     var speechRequest = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,12 +56,12 @@ class MainActivity : AppCompatActivity() {
 
         val answerOutput = findViewById<TextView>(R.id.answer_output)
 
-        tts = TextToSpeech(this, TextToSpeech.OnInitListener {  })
-        tts.language = Locale.US
+        textToSpeech = TextToSpeech(this, TextToSpeech.OnInitListener {  })
+        textToSpeech.language = Locale.US
 
         findViewById<FloatingActionButton>(R.id.read_answer).setOnClickListener {
             val answer = answerOutput.text.toString()
-            tts.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
+            textToSpeech.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
             speechRequest += 1
         }
 
@@ -115,11 +115,9 @@ class MainActivity : AppCompatActivity() {
                                         Log.d("wolfram", element.text)
                                         answerText.text = element.text
 
-                                        findViewById<FloatingActionButton>(R.id.read_answer).setOnClickListener {
-                                            val answer = findViewById<TextView>(R.id.answer_output).text.toString()
-                                            tts.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
-                                            speechRequest += 1
-                                        }
+                                        val answer = findViewById<TextView>(R.id.answer_output).text.toString()
+                                        textToSpeech.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
+                                        speechRequest += 1
                                     }
                                 }
                             }
