@@ -1,69 +1,115 @@
 package ru.netology.netologyvoiceassistant
 
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
-import android.widget.Button
+import android.view.Menu
+import android.view.MenuItem
+import android.widget.ListView
+import android.widget.SimpleAdapter
 import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import com.wolfram.alpha.WAEngine
 import com.wolfram.alpha.WAPlainText
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
+
+    lateinit var requestInput: TextView
+
+    lateinit var searchesAdapter: SimpleAdapter
+
+    val searches = mutableListOf<HashMap<String, String>>()
+
+    lateinit var waEngine: WAEngine
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d("netology voice", "start of onCreate function")
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         setSupportActionBar(findViewById(R.id.topAppBar))
-
-        val questionInput = findViewById<TextView>(R.id.question_input)
-        val searchButton = findViewById<Button>(R.id.search_button)
-
-        searchButton.setOnClickListener {
-            askWolfram(questionInput.text.toString())
-        }
+        initViews()
+        initWolframEngine()
 
         Log.d("netology voice", "end of onCreate function")
     }
 
-    fun askWolfram(question: String) {
-        val wolframAppId = "DEMO"
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.toolbar_menu, menu)
+        return super.onCreateOptionsMenu(menu)
+    }
 
-        val engine = WAEngine()
-        engine.appID = wolframAppId
-        engine.addFormat("plaintext")
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.action_search -> {
+                val question = requestInput.text.toString()
+                askWolfram(question)
+                return true
+            }
+            R.id.action_voice -> {
+                // TODO: Add Voice recognition
+                return true
+            }
+            else -> return super.onOptionsItemSelected(item)
+        }
+    }
 
-        val query = engine.createQuery()
-        query.input = question
+    private fun initViews() {
+        requestInput = findViewById<TextView>(R.id.request_input)
 
-        val answerText = findViewById<TextView>(R.id.answer_output)
-        answerText.text = "Let me think..."
+        val searchesList = findViewById<ListView>(R.id.searches_list)
+        searchesAdapter = SimpleAdapter(
+            applicationContext,
+            searches,
+            R.layout.item_search,
+            arrayOf("Request", "Response"),
+            intArrayOf(R.id.request, R.id.response)
+        )
+        searchesList.adapter = searchesAdapter
+    }
 
-        Thread(Runnable {
-            val queryResult = engine.performQuery(query)
+    fun initWolframEngine() {
+        waEngine = WAEngine()
+        waEngine.appID = "DEMO"
+        waEngine.addFormat("plaintext")
+    }
 
-            answerText.post {
-                if (queryResult.isError) {
-                    Log.e("wolfram error", queryResult.errorMessage)
-                    answerText.text = queryResult.errorMessage
-                } else if (!queryResult.isSuccess) {
-                    Log.e("wolfram error", "Sorry, I don't understand, can you rephrase?")
-                    answerText.text = "Sorry, I don't understand, can you rephrase?"
-                } else {
-                    for (pod in queryResult.pods) {
-                        if (!pod.isError) {
-                            for (subpod in pod.subpods) {
-                                for (element in subpod.contents) {
-                                    if (element is WAPlainText) {
-                                        Log.d("wolfram", element.text)
-                                        answerText.text = element.text
-                                    }
+    fun askWolfram(request: String) {
+        Toast.makeText(applicationContext, "Let me think...", Toast.LENGTH_SHORT).show()
+        CoroutineScope(Dispatchers.IO).launch {
+            val query = waEngine.createQuery().apply { input = request }
+            val queryResult = waEngine.performQuery(query)
+            val response = if (queryResult.isError) {
+                queryResult.errorMessage
+            } else if (!queryResult.isSuccess) {
+                "Sorry, I don't understand, can you rephrase?"
+            } else {
+                val str = StringBuilder()
+                for (pod in queryResult.pods) {
+                    if (!pod.isError) {
+                        for (subpod in pod.subpods) {
+                            for (element in subpod.contents) {
+                                if (element is WAPlainText) {
+                                    str.append(element.text)
                                 }
                             }
                         }
                     }
                 }
+                str.toString()
             }
-        }).start()
+            withContext(Dispatchers.Main) {
+                searches.add(0, HashMap<String, String>().apply {
+                    put("Request", request)
+                    put("Response", response)
+                })
+                searchesAdapter.notifyDataSetChanged()
+            }
+        }
     }
+
 }
