@@ -2,23 +2,44 @@ package ru.netology.netologyvoiceassistant
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
-import android.widget.Button
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.widget.ListView
+import android.widget.SimpleAdapter
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.wolfram.alpha.WAEngine
 import com.wolfram.alpha.WAPlainText
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.*
+import kotlin.collections.HashMap
 
 class MainActivity : AppCompatActivity() {
 
+    lateinit var requestInput: TextView
+
+    lateinit var searchesAdapter: SimpleAdapter
+
+    val searches = mutableListOf<HashMap<String, String>>()
+
+    lateinit var waEngine: WAEngine
+
+    lateinit var stopButton: FloatingActionButton
+
     lateinit var textToSpeech: TextToSpeech
-    var speechRequest = 0
+
+    val TTS_REQUEST_CODE = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d("netology voice", "start of onCreate function")
@@ -26,105 +47,134 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         setSupportActionBar(findViewById(R.id.topAppBar))
-
-        val questionInput = findViewById<TextView>(R.id.question_input)
-        val searchButton = findViewById<Button>(R.id.search_button)
-
-        searchButton.setOnClickListener {
-            askWolfram(questionInput.text.toString())
-        }
-
-        val speakButton = findViewById<Button>(R.id.speak_button)
-        speakButton.setOnClickListener {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            intent.putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-            )
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US)
-            intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "What do you want to know?")
-            try {
-                startActivityForResult(intent, 1)
-            } catch (a: ActivityNotFoundException) {
-                Toast.makeText(
-                    applicationContext,
-                    "Sorry your device not supported",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-
-        val answerOutput = findViewById<TextView>(R.id.answer_output)
-
-        textToSpeech = TextToSpeech(this, TextToSpeech.OnInitListener {  })
-        textToSpeech.language = Locale.US
-
-        findViewById<FloatingActionButton>(R.id.read_answer).setOnClickListener {
-            val answer = answerOutput.text.toString()
-            textToSpeech.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
-            speechRequest += 1
-        }
+        initViews()
+        initWolframEngine()
+        initTts()
 
         Log.d("netology voice", "end of onCreate function")
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1) {
-            if (resultCode == RESULT_OK && data != null) {
-                val result: ArrayList<String>? = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                val question: String? = result?.get(0)
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.toolbar_menu, menu)
+        return super.onCreateOptionsMenu(menu)
+    }
 
-                if (question != null) {
-                    findViewById<TextView>(R.id.question_input).text = question
-                    askWolfram(question)
-                }
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.action_search -> {
+                val question = requestInput.text.toString()
+                askWolfram(question)
+                return true
             }
+            R.id.action_voice -> {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                intent.putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "What do you want to know?")
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US)
+                try {
+                    startActivityForResult(intent, TTS_REQUEST_CODE)
+                } catch (a: ActivityNotFoundException) {
+                    Toast.makeText(applicationContext, "TTS not found", Toast.LENGTH_SHORT).show()
+                }
+                return true
+            }
+            else -> return super.onOptionsItemSelected(item)
         }
     }
 
-    fun askWolfram(question: String) {
-        val wolframAppId = "DEMO"
+    private fun initViews() {
+        requestInput = findViewById<TextView>(R.id.request_input)
 
-        val engine = WAEngine()
-        engine.appID = wolframAppId
-        engine.addFormat("plaintext")
+        val searchesList = findViewById<ListView>(R.id.searches_list)
+        searchesAdapter = SimpleAdapter(
+            applicationContext,
+            searches,
+            R.layout.item_search,
+            arrayOf("Request", "Response"),
+            intArrayOf(R.id.request, R.id.response)
+        )
+        searchesList.adapter = searchesAdapter
+        searchesList.setOnItemClickListener { _, _, position, _ ->
+            val request = searches[position]["Request"]
+            val response = searches[position]["Response"]
+            textToSpeech.speak(response, TextToSpeech.QUEUE_FLUSH, null, request)
+        }
 
-        val query = engine.createQuery()
-        query.input = question
+        stopButton = findViewById<FloatingActionButton>(R.id.stop_button)
+        stopButton.setOnClickListener {
+            textToSpeech.stop()
+            stopButton.visibility = View.GONE
+        }
+    }
 
-        val answerText = findViewById<TextView>(R.id.answer_output)
-        answerText.text = "Let me think..."
+    fun initWolframEngine() {
+        waEngine = WAEngine()
+        waEngine.appID = "5XAUXY-AHEX64Q37J"
+        waEngine.addFormat("plaintext")
+    }
 
-        Thread(Runnable {
-            val queryResult = engine.performQuery(query)
-
-            answerText.post {
-                if (queryResult.isError) {
-                    Log.e("wolfram error", queryResult.errorMessage)
-                    answerText.text = queryResult.errorMessage
-                } else if (!queryResult.isSuccess) {
-                    Log.e("wolfram error", "Sorry, I don't understand, can you rephrase?")
-                    answerText.text = "Sorry, I don't understand, can you rephrase?"
-                } else {
-                    for (pod in queryResult.pods) {
-                        if (!pod.isError) {
-                            for (subpod in pod.subpods) {
-                                for (element in subpod.contents) {
-                                    if (element is WAPlainText) {
-                                        Log.d("wolfram", element.text)
-                                        answerText.text = element.text
-
-                                        val answer = findViewById<TextView>(R.id.answer_output).text.toString()
-                                        textToSpeech.speak(answer, TextToSpeech.QUEUE_ADD, null, speechRequest.toString())
-                                        speechRequest += 1
-                                    }
+    fun askWolfram(request: String) {
+        Toast.makeText(applicationContext, "Let me think...", Toast.LENGTH_SHORT).show()
+        CoroutineScope(Dispatchers.IO).launch {
+            val query = waEngine.createQuery().apply { input = request }
+            val queryResult = waEngine.performQuery(query)
+            val response = if (queryResult.isError) {
+                queryResult.errorMessage
+            } else if (!queryResult.isSuccess) {
+                "Sorry, I don't understand, can you rephrase?"
+            } else {
+                val str = StringBuilder()
+                for (pod in queryResult.pods) {
+                    if (!pod.isError) {
+                        for (subpod in pod.subpods) {
+                            for (element in subpod.contents) {
+                                if (element is WAPlainText) {
+                                    str.append(element.text)
                                 }
                             }
                         }
                     }
                 }
+                str.toString()
             }
-        }).start()
+            withContext(Dispatchers.Main) {
+                searches.add(0, HashMap<String, String>().apply {
+                    put("Request", request)
+                    put("Response", response)
+                })
+                searchesAdapter.notifyDataSetChanged()
+                textToSpeech.speak(response, TextToSpeech.QUEUE_FLUSH, null, request)
+            }
+        }
     }
+
+    fun initTts() {
+        textToSpeech = TextToSpeech(this) {}
+        textToSpeech.language = Locale.US
+        textToSpeech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                stopButton.post { stopButton.visibility = View.VISIBLE }
+            }
+
+            override fun onDone(utteranceId: String?) {
+                stopButton.post { stopButton.visibility = View.GONE }
+            }
+
+            override fun onError(utteranceId: String?) {}
+        })
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == TTS_REQUEST_CODE && resultCode == RESULT_OK) {
+            data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0)?.let { question ->
+                requestInput.text = question
+                askWolfram(question)
+            }
+        }
+    }
+
 }
